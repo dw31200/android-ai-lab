@@ -1,0 +1,9 @@
+{
+  "examDate": "2026-05-18",
+  "scopeText": "1장 관계형 모델, 2장 SQL 기초, 3장 정규화, 4장 인덱스",
+  "availableHoursPerDay": 3,
+  "priorityTopics": [
+    "정규화",
+    "인덱스"
+  ]
+}

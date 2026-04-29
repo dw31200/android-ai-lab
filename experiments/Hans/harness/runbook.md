@@ -1,30 +1,34 @@
-# Hans Harness Runbook
+# Hans 하네스 운영 가이드
 
-## Purpose
-This runbook defines how to use the Hans SDK harness during implementation and QA.
+## 목적
+이 문서는 Hans SDK를 구현하거나 검증할 때 어떤 순서로 하네스를 사용해야 하는지 정의한다.
 
-## Usage stages
+## 1단계. 계약 검증
+- 요청 모델이 기능 요구사항을 충분히 담는지 확인
+- 응답 모델이 UI 연결에 적합한지 확인
+- 예외 유형이 기능별로 충분히 분리됐는지 확인
 
-### Stage 1: Contract validation
-- confirm request models are complete
-- confirm response models match UI needs
-- confirm error mapping is deterministic
+## 2단계. 기능 검증
+- 각 시나리오를 fixture 입력으로 실행
+- 결과가 구조화된 형태인지 확인
+- 자유 텍스트만 반환하는 설계를 피함
 
-### Stage 2: Provider integration validation
-- run each scenario with real provider responses
-- compare structured output against expected fields
-- log request and response ids only
+## 3단계. 품질 검증
+- 요약은 짧고 안정적인지 확인
+- 액션 추출은 과잉 추론하지 않는지 확인
+- 날짜/시간 해석이 timezone 기준으로 일관적인지 확인
 
-### Stage 3: Regression validation
-- rerun all scenarios after prompt changes
-- compare output shape and critical field quality
+## 4단계. 회귀 검증
+- 프롬프트 수정 후 기존 fixture 재실행
+- 출력 shape가 깨지지 않았는지 확인
+- 핵심 필드 누락 여부 확인
 
-## Logging rules
-- do not log API keys
-- do not log sensitive user data in release-like runs
-- keep fixture data non-sensitive
+## 로깅 규칙
+- API 키는 어떤 환경에서도 로그에 남기지 않는다
+- 민감한 사용자 텍스트는 운영 로그에 평문 저장하지 않는다
+- fixture는 비민감한 예시 데이터만 사용한다
 
-## Exit criteria
-- all four core scenarios return structured output
-- all invalid input scenarios return expected exception class
-- no scenario requires manual parsing of free-form AI text
+## 종료 기준
+- 핵심 시나리오 5개가 모두 구조화된 결과를 반환한다
+- 잘못된 입력에 대해 예상된 예외 클래스가 반환된다
+- 호출자가 결과를 후처리 없이 UI에 연결할 수 있다

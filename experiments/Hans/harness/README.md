@@ -1,27 +1,33 @@
-# Hans SDK Harness
+# Hans 하네스
 
-Hans SDK harness for manual validation, integration testing, and agent-driven experimentation.
+Hans 하네스는 **범용 AI 어시스턴트 SDK**를 설계, 검증, 실험하기 위한 Markdown 중심 작업 공간이다.
 
-## Goal
-- validate Hans SDK behavior before full app integration
-- test structured outputs for core SDK features
-- provide repeatable scenarios for AI agent implementation and QA
+## 목표
+- 특정 도메인에 묶이지 않는 AI 어시스턴트 기능을 검증한다
+- SDK의 요청/응답 계약을 반복 가능하게 테스트한다
+- 구현 전후로 에이전트가 동일한 기준으로 품질을 확인하게 한다
 
-## Target features
-- notice analysis
-- lecture note summarization
-- study plan generation
-- team action extraction
+## 이 하네스가 다루는 대상
+- 대화형 질의응답
+- 긴 텍스트 요약
+- 액션 아이템 추출
+- 일정/리마인더 후보 정리
+- 이미지 또는 메시지 기반 컨텍스트 해석
 
-## Recommended harness structure
+## 구조
 - `fixtures/`
-  sample inputs for each SDK feature
+  기능별 샘플 입력 데이터
 - `scenarios.md`
-  manual and agent-driven validation scenarios
+  기능 검증 시나리오
 - `runbook.md`
-  setup and execution notes
+  하네스 사용 절차와 검증 기준
 
-## Expected future expansion
-- Android sample host app
-- fake provider for offline testing
-- regression test dataset
+## 방향
+Hans는 학생 앱 전용 SDK가 아니라, 메모 앱, 생산성 앱, 일정 앱, 팀 협업 앱, 개인 비서 앱 어디에나 붙일 수 있는 **범용 AI 어시스턴트 SDK**를 목표로 한다.
+
+즉, 이 하네스는 다음 질문에 답할 수 있어야 한다.
+
+- 이 SDK는 어떤 입력을 받는가
+- 어떤 구조화된 결과를 반환하는가
+- 실패 시 어떻게 동작하는가
+- 앱 개발자가 이 결과를 바로 UI에 연결할 수 있는가

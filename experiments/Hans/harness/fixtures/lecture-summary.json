@@ -1,5 +1,0 @@
-{
-  "rawText": "운영체제 강의에서는 프로세스와 스레드의 차이, 컨텍스트 스위칭 비용, 스케줄링 알고리즘의 장단점을 설명했다. FCFS, SJF, Round Robin의 특징과 기아 현상, 응답 시간의 차이를 비교했다.",
-  "courseName": "운영체제",
-  "summaryDepth": "STANDARD"
-}

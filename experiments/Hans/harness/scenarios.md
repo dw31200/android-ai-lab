@@ -1,79 +1,97 @@
-# Hans Harness Scenarios
+# Hans 하네스 시나리오
 
-## Scenario H-001: Notice Analysis
+## H-001. 일반 대화 응답
 
-### Goal
-Verify that the SDK extracts assignment information from notice text or image OCR output.
+### 목적
+사용자의 자연어 요청에 대해 AI 어시스턴트가 짧고 명확한 응답을 생성하는지 확인한다.
 
-### Input
-- course notice text
-- optional OCR text from screenshot
+### 입력
+- 일반 질문
+- 작업 요청
+- 설명 요청
 
-### Expected output
-- assignment title
-- due date
-- submission method
-- warning notes
+### 기대 결과
+- 불필요하게 장황하지 않은 답변
+- 사용자 의도와 맞는 응답
+- 안전하지 않은 요청은 적절히 제한
 
-### Validation points
-- empty input is rejected
-- multiple assignments are separated correctly
-- ambiguous due dates are surfaced as warnings
+### 검증 포인트
+- 빈 입력은 거절해야 한다
+- 질문형과 명령형 입력을 모두 처리해야 한다
+- 응답 형식이 앱 UI에 바로 들어갈 수 있어야 한다
 
-## Scenario H-002: Lecture Note Summary
+## H-002. 긴 텍스트 요약
 
-### Goal
-Verify that lecture note content is summarized into study-friendly output.
+### 목적
+긴 메모, 문서, 회의록, 공지문을 핵심만 남겨 요약하는지 확인한다.
 
-### Input
-- long lecture note text
+### 입력
+- 긴 본문 텍스트
 
-### Expected output
-- short summary
-- key concepts
-- important points
-- review questions
+### 기대 결과
+- 3줄 내외 핵심 요약
+- 중요 항목 목록
+- 필요 시 후속 행동 후보
 
-### Validation points
-- summary is shorter than source text
-- concepts are not duplicated
-- review questions are usable for self-test
+### 검증 포인트
+- 요약이 원문보다 충분히 짧아야 한다
+- 핵심 정보가 누락되지 않아야 한다
+- 중복 표현이 적어야 한다
 
-## Scenario H-003: Study Plan Generation
+## H-003. 액션 아이템 추출
 
-### Goal
-Verify that the SDK builds a realistic study plan from exam data.
+### 목적
+메시지, 메모, 회의 기록에서 실행해야 할 작업을 구조화하는지 확인한다.
 
-### Input
-- exam date
-- study scope text
-- available study hours per day
+### 입력
+- 대화 텍스트
+- 할 일 섞인 메모
 
-### Expected output
-- daily study plan
-- topic priorities
-- risk notes
+### 기대 결과
+- 할 일 목록
+- 담당자 후보
+- 일정 후보
+- 확인이 필요한 항목
 
-### Validation points
-- past dates are rejected
-- plan duration matches remaining days
-- workload is distributed logically
+### 검증 포인트
+- 실행 항목이 없는 텍스트는 빈 결과 또는 경고를 반환해야 한다
+- 불명확한 날짜는 추정하지 말고 보류해야 한다
+- 잡담과 실제 작업을 구분해야 한다
 
-## Scenario H-004: Team Action Extraction
+## H-004. 리마인더/일정 후보 추출
 
-### Goal
-Verify that team project conversation is converted into action items.
+### 목적
+문장 속 시간 정보와 해야 할 일을 리마인더 후보로 정리하는지 확인한다.
 
-### Input
-- team chat transcript
+### 입력
+- "내일 3시에 병원 예약 기억해줘"
+- "금요일까지 보고서 초안 보내야 함"
 
-### Expected output
-- action list
-- owner when detectable
-- due date when detectable
-- unresolved items
+### 기대 결과
+- 제목
+- 예정 시각
+- 메모
+- confidence
 
-### Validation points
-- unrelated chat noise is ignored
-- missing owner remains nullable
-- unresolved decisions are preserved
+### 검증 포인트
+- 상대 날짜를 timezone 기준으로 해석해야 한다
+- 시각이 없는 일정은 `date only`로 처리할 수 있어야 한다
+- 해석 불가능한 표현은 경고해야 한다
+
+## H-005. 컨텍스트 해석
+
+### 목적
+텍스트와 이미지 또는 첨부 정보가 함께 들어왔을 때 맥락을 안정적으로 이해하는지 확인한다.
+
+### 입력
+- 메시지 + 스크린샷 설명
+- 메모 + 첨부 이미지 OCR 텍스트
+
+### 기대 결과
+- 핵심 요약
+- 의미 있는 액션 후보
+- 근거 문장 또는 source evidence
+
+### 검증 포인트
+- 텍스트와 이미지 정보가 충돌하면 경고해야 한다
+- 근거 없는 추정은 최소화해야 한다

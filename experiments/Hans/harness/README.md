@@ -1,12 +1,12 @@
 # Hans AI Assistant Harness
 
-Hans 하네스는 **범용 AI assistant SDK**의 기능 계약, 테스트 시나리오, fixture, 품질 기준을 한곳에서 관리하는 작업 공간이다.
+Hans 하네스는 **범용 AI assistant SDK**의 기능 계약, 테스트 시나리오, 스킬 운영 방식, 품질 기준을 Markdown으로 관리하는 작업 공간이다.
 
 ## 목표
 
 - 앱 종류에 묶이지 않는 AI assistant 기능을 검증한다.
 - 구현 전에도 request/response/error 계약을 합의할 수 있게 한다.
-- 구현 후에는 같은 fixture로 regression을 반복할 수 있게 한다.
+- 구현 후에는 같은 Markdown 시나리오로 regression을 반복할 수 있게 한다.
 - Android UI가 결과를 후처리 없이 연결할 수 있는 구조화 출력을 기준으로 삼는다.
 
 ## P0 기능 범위
@@ -21,15 +21,7 @@ Hans 하네스는 **범용 AI assistant SDK**의 기능 계약, 테스트 시나
 
 ## 공통 계약 원칙
 
-모든 fixture는 다음 필드를 가진다.
-
-- `requestId`: fixture 단위 고유 ID.
-- `scenarioId`: `scenarios.md`의 시나리오 ID.
-- `feature`: 기능 키.
-- `locale`: 기본 `ko-KR`.
-- `timezone`: 기본 `Asia/Seoul`.
-- `input`: 기능별 입력.
-- `expected`: 검증 기준. 실제 모델 답변 전문이 아니라 pass/fail assertion을 둔다.
+모든 기능은 `contract.md`에 정의된 request, response, error 계약을 따른다. 단, 이 하네스는 별도 JSON fixture 파일을 두지 않는다. 샘플 입력, 기대 출력, 검증 기준은 `scenarios.md`에 Markdown으로 기록한다.
 
 ## 디렉토리 구조
 
@@ -40,12 +32,13 @@ experiments/Hans/harness/
 ├── runbook.md
 ├── scenarios.md
 ├── team.md
-├── fixtures/
-│   ├── chat-response.json
-│   ├── summary.json
-│   ├── action-items.json
-│   ├── reminder-candidates.json
-│   └── context-interpretation.json
+├── skills/
+│   ├── README.md
+│   ├── hans-assistant-orchestrator.md
+│   ├── assistant-product-architect.md
+│   ├── assistant-contract-designer.md
+│   ├── assistant-scenario-curator.md
+│   └── assistant-qa-validator.md
 └── _workspace/              # 실행 중간 산출물. 필요 시 생성, git 추적 선택.
 ```
 
@@ -53,10 +46,10 @@ experiments/Hans/harness/
 
 1. `scenarios.md`에서 검증할 기능 ID를 고른다.
 2. `contract.md`에서 request/expected shape를 확인한다.
-3. 대응하는 `fixtures/*.json`을 입력으로 사용한다.
-4. SDK 또는 모델 응답을 생성한다.
-5. `expected.assertions`를 기준으로 pass/fail을 기록한다.
-6. 실패한 항목은 계약 문제, 프롬프트 문제, 구현 문제, fixture 문제로 분류한다.
+3. `skills/`에서 해당 작업에 필요한 역할과 절차를 확인한다.
+4. `scenarios.md`의 샘플 입력을 SDK 또는 모델 호출 계층에 전달한다.
+5. 각 시나리오의 검증 기준을 기준으로 pass/fail을 기록한다.
+6. 실패한 항목은 계약 문제, 프롬프트 문제, 구현 문제, 시나리오 문제로 분류한다.
 
 ## 품질 기준
 

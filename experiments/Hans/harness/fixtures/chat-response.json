@@ -1,5 +1,28 @@
 {
-  "prompt": "이번 주 해야 할 일을 정리해줘. 회의 준비, 병원 예약, 엄마 생일 선물 사기가 남아 있어.",
+  "requestId": "H-001-sample-001",
+  "scenarioId": "H-001",
+  "feature": "chat_response",
   "locale": "ko-KR",
-  "timezone": "Asia/Seoul"
+  "timezone": "Asia/Seoul",
+  "input": {
+    "prompt": "이번 주에 해야 할 일을 정리해줘. 회의 준비, 병원 예약, 엄마 생일 선물 사기가 남아 있어."
+  },
+  "options": {
+    "tone": "friendly",
+    "maxItems": 5
+  },
+  "expected": {
+    "status": "success",
+    "resultType": "chat_response",
+    "requiredFields": [
+      "answer",
+      "tone",
+      "safety"
+    ],
+    "assertions": [
+      "answer는 사용자의 세 가지 할 일을 모두 언급한다",
+      "외부 예약이나 구매를 완료했다고 표현하지 않는다",
+      "필요하면 사용자의 확인을 요청한다"
+    ]
+  }
 }

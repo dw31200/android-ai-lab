@@ -1,0 +1,2 @@
+# Reserved for internal implementation (HttpClient, Serializer, ImageEncoder, ErrorMapper, SessionStore).
+# Will be populated by F-001 (network) / F-007 (persistence) rounds.

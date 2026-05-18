@@ -21,6 +21,8 @@
 | F-006 | Hilt 모듈 노출 | P0 | 라운드 2 |
 | F-007 | 세션 영속화 (DataStore) | P1 | 라운드 2 신규 |
 | F-008 | 클라이언트 라이프사이클(close) | P0 | 라운드 2 신규 |
+| F-009 | Tool 등록과 단발 tool 호출 | P0 | 라운드 7 (v0.2 신규) |
+| F-010 | 멀티턴 tool 실행 루프 | P0 | 라운드 7 (v0.2 신규) |
 
 > 우선순위: P0 (필수) / P1 (중요) / P2 (있으면 좋음)
 
@@ -430,3 +432,125 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) { /* ... */ }
 ### 비기능 요구사항
 - close 응답 시간: p95 100ms (취소 신호 전파 후 즉시 반환)
 - close 후 어떤 API도 호출자 코루틴을 멈추지 않음 (즉시 실패 반환)
+
+---
+
+## F-009. Tool 등록과 단발 tool 호출 [v0.2 신규]
+
+### 설명
+호출자가 `ToolDefinition`(M-012)을 Builder 시점에 등록하면, `client.askWithTools(...)`로 LLM에 도구 사용을 허용한 단일 요청을 보낼 수 있다. 모델이 도구 호출을 결정하면 SDK는 1회 tool_use → 호출자 Executor 실행 → tool_result → 모델 최종 응답까지를 한 번의 suspend 호출로 묶어 처리한다.
+
+### 사전 조건
+- F-000 완료
+- 활성 Provider가 tool use 지원 (`Capabilities.supportsTools == true`)
+- Builder에 tool이 1개 이상 등록되어 있음
+- client가 close되지 않은 상태
+
+### 정상 흐름
+1. 호출자가 `AiAgentClient.builder(context).registerTool(ToolDefinition(...), executor)` 호출하여 tool과 Executor를 등록
+2. 호출자가 `client.askWithTools(AiRequest("..."))` 호출
+3. SDK가 등록된 ToolDefinition을 Provider 요청에 포함 (P-CLAUDE의 경우 `tools` 필드)
+4. Provider 응답을 수신
+   - `stop_reason == "tool_use"`인 경우: tool_use 블록을 M-013(ToolCall)으로 파싱
+   - `stop_reason != "tool_use"`인 경우: 그대로 M-002(AiResponse) 반환 → 7단계로 종료
+5. SDK가 등록된 Executor(`suspend (ToolCall) -> ToolResult`)를 호출
+6. ToolResult를 다음 턴 요청에 포함하여 Provider 재호출
+7. 응답 검증 (F-001 정상 흐름 4단계와 동일) 후 `Result.success(AiResponse)` 반환
+
+### 등록 정책 (R-030)
+- Tool 등록은 **Builder 단계에서만** 가능. `AiAgentClient` 인스턴스 생성 후에는 추가/제거 불가
+- 런타임 동적 등록은 v0.3 검토 (스레드 안전성·예측 가능성 우선)
+- 동일 client에 등록 가능한 tool 최대 개수: **32** (R-027)
+
+### Tool 이름 규칙 (R-025)
+- 정규식 `^[a-zA-Z][a-zA-Z0-9_-]{0,63}$` 만족 (영문 시작, 영문/숫자/`_`/`-` 64자 이하)
+- 동일 client 내에서 이름은 unique
+- Anthropic API 규칙과 일치
+
+### ToolSchema 정책 (R-029)
+- JSON Schema **부분 집합**만 지원
+- 지원 키워드: `type`(string/number/integer/boolean/object/array/null), `properties`, `required`, `description`, `items`(array element schema), `enum`(scalar only)
+- 미지원: `oneOf`, `anyOf`, `allOf`, `not`, `$ref`, `pattern`, `format`, `minimum`/`maximum`, `additionalProperties` 등
+- 스키마 최대 깊이: **5** (R-026, root object를 깊이 1로 카운트)
+- 미지원 키워드 포함 또는 깊이 초과 시 Builder.build() 단계에서 E-903/E-904로 즉시 거부
+
+### Executor 시그니처
+```kotlin
+typealias ToolExecutor = suspend (ToolCall) -> ToolResult
+```
+- Executor는 호출자의 `Dispatchers.IO`/`Dispatchers.Default`에서 실행될 것을 가정 (SDK는 별도 Dispatcher 전환 안 함)
+- Executor 내부에서 throw 시 정책: E-909 (아래 예외 흐름 참조)
+
+### 예외 흐름
+| ID | 조건 | 처리 방식 |
+|----|------|-----------|
+| E-901 | Builder에 동일 이름 tool 중복 등록 | `build()` 시 `AiException.Configuration("duplicate tool name: {name}")` throw |
+| E-902 | tool 이름 규칙 위반 (R-025 위반) | `build()` 시 `AiException.Configuration("invalid tool name: {name}")` throw |
+| E-903 | ToolSchema에 미지원 키워드 포함 | `build()` 시 `AiException.Configuration("unsupported schema keyword: {keyword}")` throw |
+| E-904 | ToolSchema 깊이 5 초과 | `build()` 시 `AiException.Configuration("schema too deep: depth={n}")` throw |
+| E-905 | 등록 tool 개수 32 초과 | `build()` 시 `AiException.Configuration("too many tools: count={n}")` throw |
+| E-907 | 모델 응답의 tool_use 블록 파싱 실패 (JSON 깨짐, 미등록 tool 이름 지칭) | `Result.failure(AiException.ServerError(code=-1, message="tool_use parse failed: {detail}"))` |
+| E-908 | tool_use.inputJson이 등록된 ToolSchema의 required/type을 만족하지 않음 | `Result.failure(AiException.ServerError(code=-1, message="tool input schema mismatch: {detail}"))` |
+| E-909 | Executor가 throw (Throwable, CancellationException 제외) | `Result.failure(AiException.InvalidInput("tool execution failed: {name}: {detail}"))` — 루프 중단 |
+| E-910 | 활성 Provider가 `supportsTools == false` | 호출 즉시 `Result.failure(AiException.Configuration("provider does not support tools"))` |
+| E-101~E-110 | F-001과 동일 (네트워크/인증/취소 등) | F-001 참조 |
+
+### CancellationException 처리
+- Executor가 `CancellationException`을 throw하거나 호출자 코루틴이 취소되면 표준 코루틴 취소 시맨틱을 따른다 (E-909 매핑 없음, `CancellationException` 그대로 전파)
+
+### 비기능 요구사항
+- 단발 tool 호출(1회 왕복) 응답 시간: p95 10초 (Provider 왕복 2회 + Executor 실행)
+- 등록된 tool 메타데이터는 메모리에서만 보관, 디스크 영속화 안 함
+- thread-safe: 동시 askWithTools 호출은 F-001과 동일하게 큐잉
+
+---
+
+## F-010. 멀티턴 tool 실행 루프 [v0.2 신규]
+
+### 설명
+F-009의 단발 흐름을 일반화하여, 모델이 연속해서 tool을 호출하는 시나리오를 자동으로 처리한다. SDK가 `stop_reason == "tool_use"`인 동안 Executor 호출과 Provider 재요청을 반복하며, R-028 한계(=8회) 도달 시 안전 종료한다.
+
+### 사전 조건
+- F-009와 동일
+
+### 정상 흐름
+1. 호출자가 `client.executeToolLoop(AiRequest("..."))` (또는 `session.executeToolLoop(...)`) 호출
+2. SDK가 F-009의 1~6단계를 반복:
+   - Provider 호출 → 응답 수신
+   - `stop_reason == "tool_use"`이면 모든 tool_use 블록에 대해 Executor 병렬 실행 (suspend 안에서 `coroutineScope { async }`)
+   - 모든 ToolResult를 하나의 다음 턴 요청에 담아 Provider 재호출
+   - `stop_reason != "tool_use"`이면 루프 종료 → 8단계
+3. 루프 반복 횟수가 R-028 한계(=8회)에 도달하면 E-906으로 종료
+4. 정상 종료 시 `Result.success(AiResponse)` 반환 (최종 AiResponse만 노출, 중간 turn은 호출자에게 보이지 않음)
+
+### 루프 한계 (R-028)
+- 단일 `executeToolLoop` 호출 당 최대 8회 (Provider 왕복 횟수 기준)
+- 8회 후에도 `stop_reason == "tool_use"`이면 `Result.failure(AiException.Configuration("tool loop limit exceeded: max=8"))` (E-906)
+- 사유: 무한 루프 방어, 비용 폭주 방지. 호출자가 8회로 부족한 워크플로우를 가진다면 v0.3에서 builder 설정 옵션 검토
+
+### 병렬 Executor 실행
+- 동일 턴에 여러 tool_use 블록이 있으면 SDK가 `coroutineScope`로 병렬 실행
+- 모든 Executor가 완료될 때까지 대기 후 다음 Provider 요청
+- 하나라도 throw하면 다른 Executor도 cancel되고 E-909로 종결
+
+### Session과의 상호작용
+- `session.executeToolLoop(...)`는 Session.send와 동일한 Mutex로 직렬화 (R-031)
+- 루프 내부의 tool_use/tool_result 블록은 **session.history()에 노출되지 않음** (M-008.Message는 USER/ASSISTANT 텍스트만)
+- 최종 ASSISTANT 응답만 history에 추가
+- tool 호출 도중 `session.save()` 호출 시 진행 중 루프가 완료될 때까지 Mutex 대기 (history 무결성)
+- 영속화 시 tool 메시지는 직렬화 대상 아님 (M-011 schemaVersion = 1 유지)
+
+### 예외 흐름
+| ID | 조건 | 처리 방식 |
+|----|------|-----------|
+| E-906 | 루프 횟수 8회 초과 | `Result.failure(AiException.Configuration("tool loop limit exceeded: max=8"))` |
+| E-907~E-910 | F-009와 동일 | F-009 참조 |
+| E-909 (병렬) | 동일 턴 내 여러 Executor 중 하나가 throw | 다른 Executor cancel 후 `Result.failure(AiException.InvalidInput("tool execution failed: {name}: {detail}"))` |
+| E-101~E-110 | F-001과 동일 | F-001 참조 |
+| E-401 | 누적 토큰이 컨텍스트 한계 초과 (Provider 응답으로 감지) | F-004 참조 |
+
+### 비기능 요구사항
+- 루프 응답 시간: p95 30초 (8회 왕복 × Executor 실행 포함, 호출자 워크로드 의존적)
+- 메모리: 루프 중 누적 history는 호출 종료 시점에 해제 (Session 사용 시는 최종 ASSISTANT만 보존)
+- 코루틴 취소: 호출자가 코루틴 취소 시 Provider 호출/Executor 모두 cooperative cancel
+- thread-safe: client 레벨은 F-001과 동일, Session 레벨은 R-031에 따라 Mutex 직렬화

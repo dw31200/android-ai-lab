@@ -23,6 +23,11 @@
 | A-010 | Session.save | suspend fun | F-007 |
 | A-011 | AiAgentClient.loadSession | suspend fun | F-007 |
 | A-012 | AiAgentClient.deleteSession | suspend fun | F-007 |
+| A-013 | Builder.registerTool | Builder fun (v0.2) | F-009 |
+| A-014 | AiAgentClient.askWithTools | suspend fun (v0.2) | F-009 |
+| A-015 | AiAgentClient.executeToolLoop | suspend fun (v0.2) | F-010 |
+| A-016 | Session.sendWithTools | suspend fun (v0.2) | F-009 |
+| A-017 | Session.executeToolLoop | suspend fun (v0.2) | F-010 |
 
 ---
 
@@ -354,6 +359,168 @@ suspend fun deleteSession(sessionId: String): Result<Unit>
 - 존재하지 않는 sessionId 삭제 시도 시 성공으로 처리 (idempotent)
 - close 시맨틱: A-009 표 참조 (케이스 A → CancellationException, 케이스 B → Result.failure(Configuration("client closed")))
 - 예외: E-705, E-706
+
+---
+
+---
+
+## A-013. Builder.registerTool [v0.2 신규]
+
+### 시그니처
+```kotlin
+public class Builder {
+    // 기존 메서드 ...
+    public fun registerTool(
+        definition: ToolDefinition,
+        executor: ToolExecutor,
+    ): Builder
+}
+
+typealias ToolExecutor = suspend (ToolCall) -> ToolResult
+```
+
+### 동작 (관련 F-009)
+- ToolDefinition(M-012)을 Builder의 내부 등록 테이블에 추가
+- `build()` 호출 시 다음을 검증:
+  - 이름 규칙 (R-025) → 실패 시 E-902
+  - 동일 이름 중복 → E-901
+  - 스키마 미지원 키워드 (R-029) → E-903
+  - 스키마 깊이 5 초과 (R-026) → E-904
+  - 등록 개수 32 초과 (R-027) → E-905
+- 검증 통과 시 client 내부에 immutable Map<String, Pair<ToolDefinition, ToolExecutor>>로 보관
+- 런타임 추가/제거 메서드는 v0.2에 없음 (R-030)
+
+### 사용 예
+```kotlin
+val client = AiAgentClient.builder(context)
+    .apiKey(BuildConfig.AI_API_KEY)
+    .registerTool(
+        definition = ToolDefinition(
+            name = "get_weather",
+            description = "Get current weather for a location",
+            inputSchema = ToolSchema.objectSchema(
+                properties = mapOf(
+                    "location" to ToolSchema.string(description = "city name"),
+                ),
+                required = listOf("location"),
+            ),
+        ),
+        executor = { call ->
+            val location = call.inputJson.jsonObject["location"]?.jsonPrimitive?.content
+                ?: return@registerTool ToolResult.error(call.id, "location missing")
+            val weather = fetchWeather(location)
+            ToolResult.success(call.id, weather)
+        },
+    )
+    .build()
+```
+
+---
+
+## A-014. AiAgentClient.askWithTools [v0.2 신규]
+
+### 시그니처
+```kotlin
+suspend fun askWithTools(request: AiRequest): Result<AiResponse>
+```
+
+### 파라미터
+| 이름 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| request | AiRequest (M-001) | Y | 질의 요청. 이미지/maxTokens 등 기존 필드와 호환 |
+
+### 반환
+- 성공: `Result.success(AiResponse)` (M-002) — 최종 ASSISTANT 응답
+- 실패: `Result.failure(AiException)` — E-907~E-910 + 기존 E-101~E-110
+
+### 동작 (관련 F-009)
+- 등록된 tool이 0개면 즉시 `Result.failure(AiException.Configuration("no tools registered"))` (E-910과 다름, 별도 검증)
+- 정상 흐름: F-009 1~7단계
+- close 시맨틱: A-009 표 참조
+
+### 사용 예
+```kotlin
+val result = client.askWithTools(AiRequest("What is the weather in Seoul?"))
+result.onSuccess { response ->
+    // tool 결과를 반영한 최종 텍스트
+    println(response.text)
+}.onFailure { error ->
+    when (error) {
+        is AiException.Configuration -> reportToDeveloper(error.message)
+        is AiException.InvalidInput -> showToolExecutionError(error.message)
+        is AiException.ServerError -> reportAndRetry(error.code)
+        else -> showError(error)
+    }
+}
+```
+
+---
+
+## A-015. AiAgentClient.executeToolLoop [v0.2 신규]
+
+### 시그니처
+```kotlin
+suspend fun executeToolLoop(request: AiRequest): Result<AiResponse>
+```
+
+### 동작 (관련 F-010)
+- F-010 정상 흐름 1~4단계 수행
+- 루프 최대 8회 (R-028), 초과 시 E-906
+- 병렬 Executor 실행 (동일 턴 내 여러 tool_use 블록)
+- close 시맨틱: A-009 표 참조
+
+### 반환
+- 성공: `Result.success(AiResponse)` — 루프 종료 시 최종 ASSISTANT 응답
+- 실패: `Result.failure(AiException)` — E-906~E-910 + 기존 E-101~E-110
+
+### 사용 예
+```kotlin
+val result = client.executeToolLoop(AiRequest(
+    "Find a restaurant in Seoul and book a table for 2 at 7pm.",
+))
+// 모델이 search_restaurant → get_availability → book_table 3개 tool을 순차 호출하는 시나리오에서
+// SDK가 루프를 자동 처리한 뒤 최종 ASSISTANT 응답을 반환
+```
+
+---
+
+## A-016. Session.sendWithTools [v0.2 신규]
+
+### 시그니처
+```kotlin
+suspend fun sendWithTools(request: AiRequest): Result<AiResponse>
+```
+
+### 동작 (관련 F-009)
+- F-009의 단발 흐름을 세션 history와 결합
+- Session.send와 같은 Mutex로 직렬화 (R-031, E-403 시맨틱 재사용)
+- tool_use/tool_result 블록은 history()에 노출되지 않음 (USER/ASSISTANT 텍스트만)
+- 최종 ASSISTANT 응답만 history에 추가
+- close 시맨틱: A-009 표 참조
+
+### 반환
+- 성공: `Result.success(AiResponse)`
+- 실패: `Result.failure(AiException)` — F-009와 동일
+
+---
+
+## A-017. Session.executeToolLoop [v0.2 신규]
+
+### 시그니처
+```kotlin
+suspend fun executeToolLoop(request: AiRequest): Result<AiResponse>
+```
+
+### 동작 (관련 F-010)
+- F-010 멀티턴 루프를 세션 history와 결합
+- Session.send와 같은 Mutex로 직렬화 (R-031)
+- 루프 도중 `session.save()` 동시 호출 시 루프 완료까지 대기
+- 영속화 시 tool 메시지는 직렬화 대상 아님 (M-011 schemaVersion = 1 유지)
+- close 시맨틱: A-009 표 참조
+
+### 반환
+- 성공: `Result.success(AiResponse)` — 루프 종료 시 최종 ASSISTANT 응답
+- 실패: `Result.failure(AiException)` — F-010과 동일
 
 ---
 

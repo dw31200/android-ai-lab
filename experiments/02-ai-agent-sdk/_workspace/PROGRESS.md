@@ -3,19 +3,21 @@
 
 | Field | Value |
 |-------|-------|
-| last_checkpoint | 2026-05-18T01:08:32.8307449Z |
-| next_round | null (conservative mode - awaiting user confirmation) |
-| next_round_prompt | (unset) |
-| token_usage_percentage | 137.98% (275966 / 200000) |
-| estimated_reset | 2026-05-18T06:01:57.8140000Z |
-| last_auto_resume_at | 2026-05-12T02:12:30.2407007Z |
+| last_checkpoint | 2026-05-18T14:12:38.0761246Z |
+| next_round | T20-spec-review |
+| next_round_prompt | v0.2 Tool use 사양 검토 라운드. spec/*.md 6종 + _workspace/spec_draft_7.md를 sdk-spec-reviewer로 검토하고 _workspace/spec_review_4.md 작성. 핵심 검토 포인트: (1) F-010 코루틴 취소 시맨틱 (2) E-908 사전 검증 위치 (3) Session.history() tool 메시지 비노출 정책 (4) Capabilities 신규 필드의 v0.1 mock Provider 영향 (5) tool_choice v0.3 분리 명시성. |
+| token_usage_percentage | 133.47% (266948 / 200000) |
+| estimated_reset | 2026-05-18T16:29:29.1400000Z |
+| last_auto_resume_at | 2026-05-18T01:08:37.8948951Z |
 
 ### Completed rounds (auto-logged)
 - `inline_test` - inline verify (at 2026-05-12T02:00:00Z)
 - `drytest5` - post .NET fix (at 2026-05-12T02:08:13.0686874Z)
 - `T18` - F-007 session persistence implementation (impl_summary_9, 59 unit tests) (at 2026-05-12T07:16:35.3643904Z)
 - `T19` - F-007 QA validation passed (qa_report_8, Blocker 0/Major 0/Minor 3) - v0.1 SDK COMPLETE (F-000~F-008) (at 2026-05-12T07:16:37.5373561Z)
-- `impl_99` - 援ы쁽 ?쇱슫??#99 ?꾨즺 (impl_summary_99.md) (at 2026-05-18T01:08:32.8171984Z)
+- `impl_99` - ?닌뗭겱 ??깆뒲??#99 ?袁⑥┷ (impl_summary_99.md) (at 2026-05-18T01:08:32.8171984Z)
+- `T20-start` - v0.2 Tool use 진입 (F-009/F-010 사양 초안 작성 중) (at 2026-05-18T13:10:48.5245563Z)
+- `T20` - v0.2 Tool use 사양 초안 완료 (F-009/F-010, spec_draft_7.md + spec/*.md 6종 갱신) (at 2026-05-18T14:12:38.0681204Z)
 <!-- AUTO-MANAGED-END: token-limit-guardian -->
 
 # SDD 워크플로우 진행 상태 스냅샷

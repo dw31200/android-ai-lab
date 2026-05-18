@@ -25,6 +25,9 @@ data class Capabilities(
     val maxImageSizeBytes: Long,
     val maxImagesPerRequest: Int,
     val supportedImageMimeTypes: Set<String>,
+    // v0.2 신규
+    val supportsTools: Boolean = false,
+    val maxToolsPerRequest: Int = 0,
 )
 
 data class ProviderConfig(
@@ -87,6 +90,8 @@ Hilt를 통해 `Set<@JvmSuppressWildcards Provider>`로 주입.
       maxImageSizeBytes = 5 * 1024 * 1024,
       maxImagesPerRequest = 10,
       supportedImageMimeTypes = setOf("image/jpeg", "image/png", "image/webp", "image/gif"),
+      supportsTools = true,         // v0.2 신규
+      maxToolsPerRequest = 32,      // v0.2 신규 (Anthropic 한계는 64지만 SDK는 R-027로 32 제한)
   )
   ```
 - **에러 매핑**:
@@ -95,6 +100,96 @@ Hilt를 통해 `Set<@JvmSuppressWildcards Provider>`로 주입.
   - 5xx → AiException.ServerError
   - timeout → AiException.Network
   - context_length_exceeded → AiException.InvalidInput("context too large") (E-401)
+
+#### P-CLAUDE tool_use/tool_result 변환 규칙 (v0.2 라운드 7 신규)
+
+**요청 변환 (SDK → Anthropic)**
+
+등록된 ToolDefinition을 Anthropic Messages API의 `tools` 배열로 직렬화:
+```json
+{
+  "model": "claude-opus-4-7",
+  "max_tokens": 1024,
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get current weather for a location",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": { "type": "string", "description": "city name" }
+        },
+        "required": ["location"]
+      }
+    }
+  ],
+  "messages": [...]
+}
+```
+
+- `ToolDefinition.name` → `tools[].name`
+- `ToolDefinition.description` → `tools[].description`
+- `ToolDefinition.inputSchema` (ToolSchema M-015) → `tools[].input_schema` (JSON Schema 부분 집합)
+  - `ToolSchema.ObjectType` → `{"type": "object", "properties": {...}, "required": [...]}`
+  - `ToolSchema.StringType` → `{"type": "string", "description": "...", "enum": [...]}`
+  - `ToolSchema.ArrayType` → `{"type": "array", "items": {...}}`
+  - 기타 scalar 타입은 `{"type": "integer/number/boolean", "description": "..."}`로 직렬화
+
+`tool_choice`는 v0.2 본 라운드에서 `auto`(기본)만 사용. SDK는 `tool_choice`를 명시적으로 송신하지 않음 (Anthropic 기본값 = `auto`).
+
+**응답 변환 (Anthropic → SDK)**
+
+Anthropic 응답이 `stop_reason: "tool_use"`이고 `content` 배열에 `tool_use` 블록이 포함되어 있을 때:
+```json
+{
+  "stop_reason": "tool_use",
+  "content": [
+    { "type": "text", "text": "I'll check the weather." },
+    {
+      "type": "tool_use",
+      "id": "toolu_01ABC...",
+      "name": "get_weather",
+      "input": { "location": "Seoul" }
+    }
+  ]
+}
+```
+
+- 각 `tool_use` 블록 → `ToolCall(id, name, inputJson)` (M-013)
+- `tool_use.name`이 등록된 ToolDefinition에 없으면 E-907
+- `tool_use.input`이 등록된 inputSchema의 required/type을 만족하지 않으면 E-908
+- 동일 응답 내 여러 `tool_use` 블록이 있을 수 있음 → F-010 병렬 Executor 실행
+
+**다음 턴 요청 변환 (ToolResult → Anthropic)**
+
+호출자 Executor가 반환한 `ToolResult`(M-014)를 다음 턴의 user 메시지로 직렬화:
+```json
+{
+  "role": "user",
+  "content": [
+    {
+      "type": "tool_result",
+      "tool_use_id": "toolu_01ABC...",
+      "content": "Sunny, 22°C",
+      "is_error": false
+    }
+  ]
+}
+```
+
+- `ToolResult.toolUseId` → `tool_result.tool_use_id`
+- `ToolResult.content` → `tool_result.content`
+- `ToolResult.isError` → `tool_result.is_error` (false면 생략 가능)
+
+**루프 종결 조건**
+
+- `stop_reason == "tool_use"`: F-010 루프 계속, 다음 턴 요청 송신
+- `stop_reason == "end_turn"` / `"stop_sequence"` / `"max_tokens"`: 루프 종료, 최종 `AiResponse` 반환
+- 루프 횟수가 R-028(=8)에 도달하면 E-906으로 종료
+
+**`Capabilities.maxToolsPerRequest` 검증**
+
+Builder.build() 시점에 등록된 tool 개수가 P-CLAUDE의 `maxToolsPerRequest`(=32)를 초과하면 E-905로 거부.
 
 ### P-OPENAI 상세 (인터페이스만, v0.2 구현)
 
@@ -200,7 +295,7 @@ v0.1에서는 자동 폴백 없음. 호출자가 catch 후 `useProvider()` 명�
 
 | 항목 | 이유 |
 |------|------|
-| Tool use(함수 호출) | Provider별 사양 차이 매우 큼 — v0.2 별도 추상화 |
+| Tool use(함수 호출) | **v0.2 라운드 7에서 추가** (F-009/F-010). P-CLAUDE의 tool_use/tool_result 패턴 우선 구현. OpenAI function calling은 P-OPENAI 구현 시 별도 라운드 |
 | 임베딩 생성 | LLM 호출과 다른 도메인 — 본 SDK 범위 외 |
 | 이미지 생성 | 별도 SDK 제안 |
 | Provider별 고유 파라미터 (예: top_p, top_k) | 추상화하지 않음. 필요 시 ProviderConfig.extra: Map\<String, Any\>로 v0.2 검토 |

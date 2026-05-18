@@ -21,6 +21,10 @@
 | M-009 | TokenUsage | 토큰 사용량 |
 | M-010 | ProviderId | Provider 식별자 enum |
 | M-011 | SessionEntity | 영속화 직렬화 엔티티 (DataStore 저장 형식, 라운드 2 신규) |
+| M-012 | ToolDefinition | 호출자가 등록하는 tool 정의 (라운드 7 v0.2 신규) |
+| M-013 | ToolCall | 모델이 요청한 tool 호출 (라운드 7 v0.2 신규) |
+| M-014 | ToolResult | tool 실행 결과 (라운드 7 v0.2 신규) |
+| M-015 | ToolSchema | JSON Schema 부분 집합 (라운드 7 v0.2 신규) |
 
 ---
 
@@ -373,6 +377,184 @@ internal sealed class ImageInputEntity {
 
 ---
 
+## M-012. ToolDefinition [v0.2 신규]
+
+호출자가 Builder 시점에 등록하는 tool의 정의.
+
+| 필드 | 타입 | 필수 | 설명 | 제약 조건 |
+|------|------|------|------|-----------|
+| name | String | Y | tool 식별자 | R-025 정규식 `^[a-zA-Z][a-zA-Z0-9_-]{0,63}$` |
+| description | String | Y | 모델이 도구 용도를 이해하기 위한 설명 | 1~1024자 |
+| inputSchema | ToolSchema (M-015) | Y | 입력 인자 스키마 | R-026 깊이 5 이하, R-029 부분 집합만 |
+
+### Kotlin 정의
+```kotlin
+@Serializable
+data class ToolDefinition(
+    val name: String,
+    val description: String,
+    val inputSchema: ToolSchema,
+) {
+    init {
+        require(name.matches(Regex("^[a-zA-Z][a-zA-Z0-9_-]{0,63}$"))) {
+            "invalid tool name: $name"
+        }
+        require(description.isNotBlank() && description.length <= 1024) {
+            "description must be 1..1024 chars"
+        }
+    }
+}
+```
+
+### 영속화 정책
+- `@Serializable`은 부여하되, **v0.2 본 라운드에서 SessionEntity(M-011)에는 포함되지 않는다** (M-011 schemaVersion = 1 유지)
+- 디스크에 ToolDefinition을 보관하지 않음 — Builder에서 매 client 생성 시 새로 등록해야 함
+
+---
+
+## M-013. ToolCall [v0.2 신규]
+
+모델이 반환한 tool_use 블록을 SDK가 파싱한 결과. 호출자 Executor의 입력으로 전달된다.
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| id | String | Y | tool_use_id (Provider가 생성, 예: Anthropic의 `toolu_01...`) |
+| name | String | Y | 호출 대상 tool 이름 (등록된 ToolDefinition.name과 매칭) |
+| inputJson | JsonElement | Y | 모델이 생성한 input JSON (kotlinx.serialization JsonElement) |
+
+### Kotlin 정의
+```kotlin
+@Serializable
+data class ToolCall(
+    val id: String,
+    val name: String,
+    val inputJson: JsonElement,
+)
+```
+
+### 동작
+- SDK가 `name`이 등록된 tool에 없으면 E-907로 거부
+- SDK가 `inputJson`이 등록된 ToolDefinition.inputSchema의 required/type을 만족하지 않으면 E-908로 거부 (호출자 Executor 호출 전 검증)
+
+---
+
+## M-014. ToolResult [v0.2 신규]
+
+호출자 Executor가 반환하는 tool 실행 결과. SDK가 다음 턴 요청에 tool_result 블록으로 변환한다.
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| toolUseId | String | Y | M-013.id와 동일한 식별자 (Provider가 매칭) |
+| content | String | Y | tool 실행 결과 텍스트 (모델이 읽음) |
+| isError | Boolean | N | 실행 실패를 모델에게 알릴지 여부 (기본 false) |
+
+### Kotlin 정의
+```kotlin
+@Serializable
+data class ToolResult(
+    val toolUseId: String,
+    val content: String,
+    val isError: Boolean = false,
+) {
+    companion object {
+        fun success(toolUseId: String, content: String): ToolResult =
+            ToolResult(toolUseId, content, isError = false)
+
+        fun error(toolUseId: String, message: String): ToolResult =
+            ToolResult(toolUseId, message, isError = true)
+    }
+}
+```
+
+### Executor 예외 정책
+- Executor 내부에서 throw 시: SDK가 E-909(AiException.InvalidInput)으로 변환하여 루프 중단 (F-009 예외 흐름 참조)
+- Executor가 의도적으로 실패를 모델에게 알리고 싶다면 `ToolResult.error(...)`을 반환하면 됨 (이 경우 루프 계속)
+
+---
+
+## M-015. ToolSchema (JSON Schema 부분 집합) [v0.2 신규]
+
+JSON Schema의 **부분 집합**만 지원하는 입력 스키마. 모델이 input을 생성하기 위해 사용하며, SDK는 모델 응답의 input을 이 스키마로 검증한다.
+
+### 지원 키워드 (R-029)
+- `type`: `string` / `number` / `integer` / `boolean` / `object` / `array` / `null`
+- `properties`: object 타입의 필드 정의
+- `required`: object 타입의 필수 필드 이름 리스트
+- `description`: 필드 설명 (모델 힌트)
+- `items`: array 타입의 element schema
+- `enum`: scalar 값(string/number/integer/boolean)의 허용 집합
+
+### 미지원 키워드 (E-903 거부)
+- `oneOf`, `anyOf`, `allOf`, `not`
+- `$ref`, `$defs`
+- `pattern`, `format`
+- `minimum`, `maximum`, `minLength`, `maxLength`
+- `additionalProperties`, `patternProperties`
+
+### Kotlin 정의
+```kotlin
+@Serializable
+sealed class ToolSchema {
+    @Serializable
+    @SerialName("string")
+    data class StringType(val description: String? = null, val enum: List<String>? = null) : ToolSchema()
+
+    @Serializable
+    @SerialName("integer")
+    data class IntegerType(val description: String? = null, val enum: List<Int>? = null) : ToolSchema()
+
+    @Serializable
+    @SerialName("number")
+    data class NumberType(val description: String? = null) : ToolSchema()
+
+    @Serializable
+    @SerialName("boolean")
+    data class BooleanType(val description: String? = null) : ToolSchema()
+
+    @Serializable
+    @SerialName("object")
+    data class ObjectType(
+        val properties: Map<String, ToolSchema>,
+        val required: List<String> = emptyList(),
+        val description: String? = null,
+    ) : ToolSchema()
+
+    @Serializable
+    @SerialName("array")
+    data class ArrayType(
+        val items: ToolSchema,
+        val description: String? = null,
+    ) : ToolSchema()
+
+    companion object {
+        fun string(description: String? = null, enum: List<String>? = null) =
+            StringType(description, enum)
+        fun integer(description: String? = null) = IntegerType(description)
+        fun objectSchema(
+            properties: Map<String, ToolSchema>,
+            required: List<String> = emptyList(),
+            description: String? = null,
+        ) = ObjectType(properties, required, description)
+    }
+}
+```
+
+### 깊이 검증 (R-026)
+- root ObjectType을 깊이 1로 카운트
+- ObjectType.properties / ArrayType.items를 따라 들어갈 때마다 깊이 +1
+- 최대 깊이 5. 6 이상이면 Builder.build()에서 E-904로 즉시 거부
+- 검증 시점: Builder.build() (런타임 ask 호출 시점에 다시 검증하지 않음)
+
+### Provider 직렬화
+- P-CLAUDE: Anthropic Messages API의 `input_schema` 필드 형식으로 직렬화 (provider-spec.md "P-CLAUDE tool 변환 규칙" 참조)
+- Anthropic이 요구하는 JSON Schema 형식 일부와 정확히 매핑되도록 SerialName을 `type` 값에 맞춤 (`string`/`object`/`array` 등)
+
+### 영속화 정책
+- v0.2 본 라운드에서는 영속화 대상 아님 — M-011 SessionEntity에 포함되지 않음
+- ToolDefinition은 매 Builder 시점에 호출자가 다시 등록해야 함
+
+---
+
 ## 관계도
 
 ```
@@ -390,6 +572,10 @@ AiRequest ──N── VideoInput  (v0.2)
 AiResponse ──1── TokenUsage
 Session ──N── Message
 SessionEntity ──N── MessageEntity ──N── ImageInputEntity
+
+AiAgentClient ──N── ToolDefinition (v0.2, Builder 시점 등록)
+ToolDefinition ──1── ToolSchema
+[Provider tool_use 응답] ──N── ToolCall ──(Executor)──> ToolResult
 ```
 
 ## 직렬화 정책

@@ -23,7 +23,7 @@
 ### Out of Scope (안 만든다)
 - 영상 입력 — 이유: v0.1 범위 축소, Provider 지원 부족 (v0.2 검토)
 - 오디오 입력 — 이유: Provider별 사양 상이, 별도 라운드
-- Tool use(함수 호출) — 이유: 사양 복잡도 높음, v0.2 검토
+- Tool use(함수 호출) — v0.1 미포함. **v0.2에서 F-009/F-010으로 추가** (본 문서 "v0.2: Tool use" 섹션 참조)
 - 온디바이스 모델 — 이유: 별도 도메인, 본 SDK 범위 외
 - OpenAI Provider 구현 (P-OPENAI) — 이유: 추상화만 v0.1에 포함, 실제 구현은 v0.2
 - 자동 재시도 정책 — 이유: D-005 결정에 따라 v0.1은 호출자 재호출 책임, v0.2에서 RetryPolicy 주입 도입
@@ -82,3 +82,29 @@
 - 영속화 프로세스 모델 (R-019 라운드 3): v0.1은 호출자 앱이 **단일 프로세스에서만 SDK를 사용**한다고 가정. DataStore Preferences는 단일 프로세스 권장이며, 다중 프로세스에서 같은 DataStore 파일을 동시에 사용하는 동작은 정의되지 않음 (Out of Scope)
 - 모든 public 비동기 API는 suspend 또는 Flow (콜백 금지)
 - 코루틴 cooperative cancellation 지원
+
+---
+
+## v0.2: Tool use (Function calling) [라운드 7 신규]
+
+v0.2에서 Tool use(함수 호출) 기능을 추가한다. Anthropic Messages API의 `tool_use`/`tool_result` 블록 패턴을 SDK가 추상화하여, 호출자가 도구를 등록하면 모델이 그 도구를 호출하는 멀티턴 대화 흐름을 지원한다.
+
+**스코프 (In Scope, v0.2)**
+- 도구 등록 (Builder 시점, F-009)
+- 단발 tool 호출 (F-009 — `askWithTools`)
+- 멀티턴 tool 실행 루프 (F-010 — `executeToolLoop`)
+- P-CLAUDE의 tool_use/tool_result 블록 변환
+- JSON Schema 부분 집합 입력 스키마 (`type`/`properties`/`required`/`description`/`items`/`enum`만 — R-029)
+- 멀티턴 무한루프 가드 (최대 8회 — R-028)
+
+**Out of Scope (v0.2 라운드 7 미포함)**
+- 런타임 tool 등록/제거 (Builder 외) — v0.3 검토 (R-030)
+- `tool_choice` 세부 옵션 (`tool`/`any`/`none`) — `auto`만 노출, v0.3 검토
+- Session 영속화 시 tool 메시지 직렬화 — v0.2 본 라운드는 in-memory 한정. tool 호출 도중 `session.save()` 호출 시 tool_use/tool_result 블록은 history에 포함되지 않음 (M-011 schemaVersion = 1 유지)
+- Tool 호출 스트리밍 (`askStreamWithTools`) — v0.3 검토
+- OpenAI Provider의 function calling — P-OPENAI 구현 라운드에서 별도 결정
+
+**하위 호환 보장**
+- F-001~F-008의 모든 API 시그니처는 v0.2에서도 불변
+- 신규 API(A-013~A-017)는 추가만, 기존 ask/askStream/createSession/Session.send는 영향 없음
+- `Capabilities` 데이터 클래스에 `supportsTools`/`maxToolsPerRequest` 두 필드만 추가 (v0.1 호출자가 직접 생성한 적 없는 internal 모델이라 영향 미미)

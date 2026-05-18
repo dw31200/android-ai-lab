@@ -34,6 +34,10 @@
 | ERR-005 | 입력 | prompt 빈 값, 이미지 5MB 초과, 지원하지 않는 mime, 컨텍스트 초과, session not found, session too large | "Invalid input: {detail}" | 입력 검증 후 재호출 |
 | ERR-006 | 서버 | API 5xx, 파싱 실패, 빈 응답 | "Server error ({code}). Please try again later." | 보고/재호출 |
 | ERR-007 | IO (라운드 2 신규) | 영속화 저장 실패 (디스크 가득, IO 오류), 손상된 데이터, schemaVersion 미지원 (R-018 라운드 3) | "Storage error: {detail}" | 사용자 안내 또는 deleteSession 후 새로 시작 |
+| ERR-901 | Tool 설정 오류 (v0.2 신규) | 등록 단계 검증 실패: 이름 중복/규칙 위반, 스키마 미지원 키워드/깊이 초과, tool 개수 초과, Provider tool 미지원 | "Configuration error: {detail}" | 코드 수정 (Tool 등록 시점) |
+| ERR-902 | Tool 응답 파싱 실패 (v0.2 신규) | 모델 응답의 tool_use 블록 JSON 깨짐, 미등록 tool 이름 지칭, input schema 불일치 | "Server error ({code}). Please try again later." | 보고/재호출 |
+| ERR-903 | Tool 루프 한계 초과 (v0.2 신규) | `executeToolLoop`가 8회 안에 종결되지 못함 | "Configuration error: tool loop limit exceeded" | 워크플로우 단순화 또는 v0.3 옵션 대기 |
+| ERR-904 | Tool 실행 실패 (v0.2 신규) | 호출자 Executor가 throw (CancellationException 제외) | "Invalid input: tool execution failed: {name}" | Executor 로직 점검 |
 
 ---
 
@@ -48,6 +52,10 @@
 | ERR-005 | AiException.InvalidInput | message: String |
 | ERR-006 | AiException.ServerError | code: Int, message: String? |
 | ERR-007 | AiException.IOError | message: String, cause: Throwable? |
+| ERR-901 | AiException.Configuration | message: String (v0.2 Tool 설정 오류) |
+| ERR-902 | AiException.ServerError | code: Int (= -1), message: String (v0.2 Tool 응답 파싱 실패) |
+| ERR-903 | AiException.Configuration | message: String (v0.2 Tool 루프 한계) |
+| ERR-904 | AiException.InvalidInput | message: String (v0.2 Tool 실행 실패) |
 
 ---
 
@@ -92,6 +100,16 @@
 | E-705 (client closed) | F-007 save/load/delete | ERR-004 |
 | E-706 (영속화 도중 취소) | F-007 save/load/delete | (CancellationException) |
 | E-801 (close 도중 IO) | F-008 close() | (무시, 로그만, ERR 매핑 없음) |
+| E-901 (tool 이름 중복) | F-009 Builder.build() | ERR-901 |
+| E-902 (tool 이름 규칙 위반) | F-009 Builder.build() | ERR-901 |
+| E-903 (스키마 미지원 키워드) | F-009 Builder.build() | ERR-901 |
+| E-904 (스키마 깊이 5 초과) | F-009 Builder.build() | ERR-901 |
+| E-905 (tool 개수 32 초과) | F-009 Builder.build() | ERR-901 |
+| E-906 (루프 8회 초과) | F-010 executeToolLoop() | ERR-903 |
+| E-907 (tool_use 파싱 실패) | F-009 askWithTools() / F-010 executeToolLoop() | ERR-902 |
+| E-908 (input schema 불일치) | F-009 askWithTools() / F-010 executeToolLoop() | ERR-902 |
+| E-909 (Executor throw) | F-009 askWithTools() / F-010 executeToolLoop() | ERR-904 (CancellationException은 그대로 전파) |
+| E-910 (Provider tool 미지원) | F-009 askWithTools() / F-010 executeToolLoop() | ERR-901 |
 
 > 매핑 누락 = QA 검증 실패 조건
 

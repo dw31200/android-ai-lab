@@ -28,9 +28,29 @@ description: SDD 사양 중심 SDK 개발 워크플로우를 오케스트레이�
 
 ## 워크플로우
 
-### Phase 0: 컨텍스트 확인 (필수 시작 단계)
+### Phase 0: 컨텍스트 확인 + 토큰 한도 게이팅 (필수 시작 단계)
 
-워크플로우 시작 시 다음을 확인하여 실행 모드를 결정한다.
+**0-A. 토큰 한도 사전 체크 (token-limit-guardian 협업)**
+
+워크플로우 진입 즉시 `token-limit-guardian` 스킬의 `check_token_usage.ps1`을 호출하여 현재 5시간 윈도우 사용량을 확인한다.
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File .claude/skills/token-limit-guardian/scripts/check_token_usage.ps1
+```
+
+판단:
+- **breach=false** (80% 미만): 정상 진행. 아래 0-B로.
+- **breach=true** (80% 이상): 새 라운드 시작 금지. 다음 두 가지 선택지로 사용자에게 즉시 확인:
+  1. **즉시 안전 종료** — `_workspace/PROGRESS.md` 갱신 + `register_resume_task.ps1`로 한도 리셋 시점에 자동 재개 등록 + 사용자에게 종료 보고
+  2. **사용자 책임 하에 계속 진행** — 사용자가 명시적 동의 시에만 진행 (한도 도달 시 작업 손실 가능)
+
+**0-C. 자동 재개 진입 감지**
+
+본 세션이 Task Scheduler의 `auto_resume.ps1`이 호출한 자동 재개 세션인 경우, `_workspace/PROGRESS.state.json`의 `last_auto_resume_at` 필드가 최근(5분 이내) 갱신되어 있다. 이 경우:
+- **보수적 모드 적용**: `next_round` 필드가 명시된 경우에만 그 라운드 진행. 미명시 시 status 보고만 하고 사용자 입력 대기.
+- `next_round_prompt` 가 있으면 그 prompt를 그대로 사용해 해당 라운드 호출 (android-implementer 또는 spec-architect).
+
+**0-B. 컨텍스트 점검 (기존 로직)**
 
 ```
 대상 디렉토리: experiments/{exp-id}/
@@ -95,6 +115,8 @@ description: SDD 사양 중심 SDK 개발 워크플로우를 오케스트레이�
 **병렬화**: 의존성 없는 F-XXX는 동시에 진행 가능. 단, 한 에이전트당 한 시점에 한 F-XXX만 처리.
 
 **완료 조건**: 모든 F-XXX의 QA 보고서 Blocker 0, Major 0건. android-implementer가 오케스트레이터에게 전체 완료 보고.
+
+**라운드 종료 시점 자동 체크포인트:** 매 라운드(impl_summary_N.md 또는 qa_report_N.md) 종료 직후 PostToolUse hook이 자동으로 `update_progress.ps1`을 호출하여 `_workspace/PROGRESS.md`와 `PROGRESS.state.json`을 갱신한다. 별도 호출 불필요. 오케스트레이터는 새 라운드 진입 전에 0-A(토큰 게이팅)만 다시 확인하면 된다.
 
 ### Phase 4: 통합 검증 (sdk-qa-validator)
 

@@ -1,0 +1,46 @@
+﻿{
+    "completed_rounds":  [
+                             {
+                                 "label":  "inline_test",
+                                 "description":  "inline verify",
+                                 "checkpoint_at":  "2026-05-12T02:00:00Z"
+                             },
+                             {
+                                 "label":  "drytest5",
+                                 "description":  "post .NET fix",
+                                 "checkpoint_at":  "2026-05-12T02:08:13.0686874Z"
+                             },
+                             {
+                                 "label":  "T18",
+                                 "description":  "F-007 session persistence implementation (impl_summary_9, 59 unit tests)",
+                                 "checkpoint_at":  "2026-05-12T07:16:35.3643904Z"
+                             },
+                             {
+                                 "label":  "T19",
+                                 "description":  "F-007 QA validation passed (qa_report_8, Blocker 0/Major 0/Minor 3) - v0.1 SDK COMPLETE (F-000~F-008)",
+                                 "checkpoint_at":  "2026-05-12T07:16:37.5373561Z"
+                             },
+                             {
+                                 "label":  "impl_99",
+                                 "description":  "?닌뗭겱 ??깆뒲??#99 ?袁⑥┷ (impl_summary_99.md)",
+                                 "checkpoint_at":  "2026-05-18T01:08:32.8171984Z"
+                             }
+                         ],
+    "next_round":  null,
+    "next_round_prompt":  null,
+    "last_checkpoint":  "2026-05-18T01:08:32.8307449Z",
+    "last_token_usage":  {
+                             "used":  275966,
+                             "cache_read_tokens":  2382236,
+                             "limit":  200000,
+                             "threshold":  0.8,
+                             "percentage":  137.98,
+                             "window_hours":  5,
+                             "window_start":  "2026-05-18T01:01:57.8140000Z",
+                             "estimated_reset":  "2026-05-18T06:01:57.8140000Z",
+                             "breach":  true,
+                             "transcript":  "C:\\Users\\82106\\.claude\\projects\\C--Users-82106\\1d2a9a79-1218-4c68-b360-16fbe4150d52.jsonl",
+                             "checked_at":  "2026-05-18T01:08:32.1473915Z"
+                         },
+    "last_auto_resume_at":  "2026-05-18T01:08:37.8948951Z"
+}

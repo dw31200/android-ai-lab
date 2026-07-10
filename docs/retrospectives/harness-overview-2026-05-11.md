@@ -4,6 +4,8 @@
 발표자: dw31200@gmail.com (Android 앱 개발자)
 실험 디렉토리: `experiments/02-ai-agent-sdk/`
 
+> **[2026-07-10 업데이트]** 본 문서에 기술된 token-limit-guardian(토큰 한도 자동 체크포인트 + Task Scheduler 자동 재개) 레이어는 **제거되었다**. hook이 전역 `~/.claude/settings.json`에 등록되어 다른 프로젝트 세션에도 실행되는 부작용이 있었기 때문. 이 문서는 당시 설계 기록으로만 보존한다. SDD 코어 레이어(4명 에이전트 팀)는 계속 유효하다.
+
 ---
 
 ## 1. 한 줄 요약

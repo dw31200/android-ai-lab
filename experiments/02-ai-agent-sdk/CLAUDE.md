@@ -7,7 +7,7 @@
 - `spec/` : 6종 SDD 사양 문서 (overview/features/api/data-model/error-handling/provider-spec)
 - `sdk/` : Kotlin SDK 구현 (사양 합의 후 생성)
 - `_workspace/` : 에이전트 중간 산출물 (검토·QA 보고서 등)
-- `.claude/` : 본 실험 전용 하네스 (에이전트 4명 + 스킬 6개 + Hook 자동화)
+- `.claude/` : 본 실험 전용 하네스 (에이전트 4명 + 스킬 5개)
 
 ## 하네스: AI 에이전트 SDK 개발
 
@@ -15,7 +15,6 @@
 
 **트리거:**
 - SDK 사양/구현/검증 관련 작업 → `sdk-development-orchestrator` 스킬 사용
-- 토큰 한도/체크포인트/자동 재개 관련 → `token-limit-guardian` 스킬 사용
 - 단순 질문(개념 설명, API 사용법 등)은 직접 응답 가능
 
 **팀 구성:**
@@ -24,20 +23,12 @@
 - android-implementer — Kotlin SDK 구현
 - sdk-qa-validator — 사양-구현 정합성 검증
 
-**보호 레이어 (Hook 자동화):**
-- UserPromptSubmit hook — 매 사용자 메시지 시 토큰 사용량 체크. 80% 초과 시 systemMessage로 자동 경고
-- PostToolUse hook — `_workspace/impl_summary_*.md` 또는 `_workspace/qa_report_*.md` 생성 시 자동 PROGRESS.md 갱신
-- 한도 임박 시: `register_resume_task.ps1`로 Windows Task Scheduler에 자동 재개 등록 (보수적 모드 — `next_round` 명시값만 진행)
-
-**환경변수 (token-limit-guardian, 선택 조정):**
-- `CLAUDE_LIMIT_TOTAL_TOKENS` (기본 200000)
-- `CLAUDE_LIMIT_THRESHOLD` (기본 0.8)
-- `CLAUDE_LIMIT_RESET_BUFFER_MIN` (기본 5)
-- `CLAUDE_LIMIT_WINDOW_HOURS` (기본 5)
-
 **변경 이력:**
 | 날짜 | 변경 내용 | 대상 | 사유 |
 |------|----------|------|------|
 | 2026-04-28 | 초기 구성 (4명 에이전트 팀 + 5개 스킬) | 전체 | SDD 학습용 하네스 구축 |
 | 2026-04-29 | 하네스 위치를 본 실험 디렉토리 하위로 이동 | `.claude/` | 다른 실험에 영향 없도록 격리 |
 | 2026-05-11 | 토큰 한도 관리 레이어 추가 (token-limit-guardian 스킬 + UserPromptSubmit/PostToolUse hook + PROGRESS.md 자동 갱신 + Task Scheduler 자동 재개) | `.claude/skills/token-limit-guardian/`, `.claude/settings.json`, `sdk-development-orchestrator` Phase 0 | 5시간 사용 한도 도달 시 작업 손실 방지 + 한도 리셋 후 보수적 자동 재개 |
+| 2026-05-18 | token-limit-guardian (1) 측정 기준을 환경변수 → 스크립트 상수로 고정 (Claude Code `/usage`와 동일 원천 사용), (2) 임계값 80% → 90%, (3) 90% 도달 시 사용자 확인 없이 hook이 직접 자동 재시작 예약 | `.claude/skills/token-limit-guardian/scripts/check_token_usage.ps1`, `hook_user_prompt_submit.ps1`, `register_resume_task.ps1`, `SKILL.md`, `references/scripts-reference.md` | 수동 환경 설정 차단 + 무조건 자동 재시작 (사용자 요청) |
+| 2026-05-19 | token-limit-guardian calibration 메커니즘 도입 (`recalibrate_limit.ps1` 신규, `_workspace/token_limit_calibration.json` scale_factor 적용). 초기 calibration: scale_factor=0.123739 (raw 187% → 표시 23%). 잘못 등록된 auto-resume task 해제. | `.claude/skills/token-limit-guardian/scripts/check_token_usage.ps1`, `recalibrate_limit.ps1` (신규), `SKILL.md`, `references/scripts-reference.md`, `_workspace/token_limit_calibration.json` (신규) | raw 계산이 실제 `/usage` 20% 대비 6배 부풀려져 false breach 발생 (cache_creation 가중치 비공개) → calibration 으로 보정 |
+| 2026-07-10 | 토큰 한도 관리 레이어 전체 제거 (token-limit-guardian 스킬 삭제, 전역 UserPromptSubmit/PostToolUse hook 해제, Task Scheduler 자동 재개 task 해제, PROGRESS/calibration 상태 파일 삭제, orchestrator Phase 0 토큰 게이팅 제거) | `.claude/skills/token-limit-guardian/` (삭제), `~/.claude/settings.json` hooks, `sdk-development-orchestrator` Phase 0, `_workspace/PROGRESS.*` | hook이 전역 설정에 등록되어 다른 프로젝트 세션에도 실행되는 부작용 발생 → 자동화 기능 폐기 (사용자 요청) |
